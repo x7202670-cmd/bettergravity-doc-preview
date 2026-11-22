@@ -1,0 +1,262 @@
+/* BetterGravity Doc Preview Plugin Styles */
+
+.bg-doc-preview-hidden-fallback {
+  display: none !important;
+}
+
+.bg-doc-preview-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 100%;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 240px;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: var(--bg-primary, #f6f7f9);
+  color: var(--text-primary, #1f2328);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.bg-doc-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  padding: 6px 10px;
+  min-height: 38px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.92));
+  backdrop-filter: blur(8px);
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.bg-doc-preview-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.bg-doc-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.bg-doc-preview-badge--pdf {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
+.bg-doc-preview-badge--docx {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+}
+
+.bg-doc-preview-filename {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bg-doc-preview-meta {
+  color: rgba(128, 128, 128, 0.9);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.bg-doc-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.bg-doc-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(128, 128, 128, 0.26);
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+  user-select: none;
+}
+
+.bg-doc-preview-btn:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+
+.bg-doc-preview-btn--icon {
+  width: 26px;
+  padding: 0;
+  font-weight: 600;
+}
+
+.bg-doc-preview-btn--primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.bg-doc-preview-btn--primary:hover {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.bg-doc-preview-zoom-label {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.bg-doc-preview-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 12px 32px;
+  box-sizing: border-box;
+  background: rgba(128, 128, 128, 0.08);
+}
+
+/* Word (.docx) 渲染样式 */
+.bg-doc-preview-docx-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: fit-content;
+  margin: 0 auto;
+  transform-origin: top center;
+}
+
+.bg-doc-preview-docx-stage .bg-docx-wrapper {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.bg-doc-preview-docx-stage .bg-docx-wrapper > section.bg-docx {
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 4px;
+  margin-bottom: 18px !important;
+}
+
+/* PDF 渲染样式 */
+.bg-doc-preview-pdf-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: fit-content;
+  margin: 0 auto;
+  gap: 16px;
+}
+
+.bg-pdf-page-card {
+  position: relative;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.bg-pdf-page-card > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.bg-pdf-page-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(17, 24, 39, 0.65);
+  color: #ffffff;
+  font-size: 11px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.bg-pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.25;
+  line-height: 1;
+  user-select: text;
+  z-index: 2;
+}
+
+.bg-pdf-text-layer span,
+.bg-pdf-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.bg-pdf-text-layer ::selection {
+  background: rgba(37, 99, 235, 0.35);
+}
+
+/* 状态与本地拖拽兜底区 */
+.bg-doc-preview-state {
+  max-width: 480px;
+  margin: 48px auto;
+  padding: 24px 28px;
+  border-radius: 12px;
+  border: 1px dashed rgba(128, 128, 128, 0.35);
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.9));
+  color: var(--text-primary, #1f2328);
+  text-align: center;
+}
+
+.bg-doc-preview-state--dragover {
+  border-color: #2563eb;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.bg-doc-preview-state-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.bg-doc-preview-state-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(128, 128, 128, 0.95);
+  margin-bottom: 14px;
+  word-break: break-all;
+}
+
+.bg-doc-preview-state-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
