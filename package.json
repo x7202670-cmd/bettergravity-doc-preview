@@ -1,7 +1,7 @@
 {
   "name": "bettergravity-doc-preview",
   "version": "1.0.0",
-  "description": "BetterGravity 本地文档预览插件工程：在 Antigravity 工作区预览面板中直接渲染 Word (.docx) 与 PDF (.pdf)，支持自适应宽度与鼠标定点缩放。",
+  "description": "在 Antigravity 工作区预览 Word、PowerPoint 和 PDF，支持自适应宽度与鼠标定点缩放。",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",

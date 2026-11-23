@@ -1,6 +1,6 @@
 {
   "name": "Doc Preview",
-  "description": "在工作区预览面板中直接显示 Word (.doc / .docx) 和 PDF (.pdf) 文档。",
+  "description": "在工作区预览面板中直接显示 Word、PowerPoint 和 PDF 文档。",
   "version": "1.0.0",
   "author": "BetterGravity Community",
   "main": "index.js",

@@ -19,6 +19,12 @@ const settings = plugin.settings.define({
     description: "在工作区预览面板中直接显示 Word 文档。",
     default: true
   },
+  enablePowerPoint: {
+    type: "boolean",
+    label: "启用 PowerPoint (.ppt / .pptx) 预览",
+    description: "在工作区预览面板中逐页显示幻灯片。",
+    default: true
+  },
   defaultZoom: {
     type: "select",
     label: "默认缩放比例",
@@ -89,7 +95,19 @@ function detectExtension(fileName) {
   if (lower.endsWith(".pdf")) return "pdf";
   if (lower.endsWith(".docx")) return "docx";
   if (lower.endsWith(".doc")) return "doc";
+  if (lower.endsWith(".pptx")) return "pptx";
+  if (lower.endsWith(".ppt")) return "ppt";
   return null;
+}
+
+function isPresentation(ext) {
+  return ext === "ppt" || ext === "pptx";
+}
+
+function previewEnabled(ext) {
+  if (ext === "pdf") return settings.enablePdf;
+  if (isPresentation(ext)) return settings.enablePowerPoint;
+  return settings.enableDocx;
 }
 
 function collectRoots(doc, out = []) {
@@ -228,7 +246,7 @@ async function resolveDocumentBuffer(box, source, signal, preferLocal) {
   const { data, ext, fileUri, message } = source;
   const doc = box.ownerDocument;
   const canReadLocal = LOCAL_PREVIEW_CONFIG && /^file:\/\/\//i.test(fileUri);
-  const tryLocalFirst = preferLocal || ext === "doc";
+  const tryLocalFirst = preferLocal || ext === "doc" || isPresentation(ext);
   let sourceError;
   if (tryLocalFirst && canReadLocal) {
     try {
@@ -298,29 +316,32 @@ async function fetchLocalPreview(endpoint, signal, options) {
   });
 }
 
-function legacyWordError(status) {
+function conversionError(status, ext) {
+  const kind = isPresentation(ext) ? "PowerPoint" : "DOC";
   const messages = {
-    413: "此 DOC 文件超过 128 MiB 的转换上限",
-    422: "无法解析此 DOC 文件，文件可能已加密、损坏或使用了不支持的 Word 格式",
-    429: "正在转换其他 Word 文档，请稍后重载",
-    501: "DOC 转换组件尚未启用"
+    413: `此 ${kind} 文件超过 128 MiB 的转换上限`,
+    422: `无法解析此 ${kind} 文件，文件可能已加密、损坏或使用了不支持的格式`,
+    429: "正在转换其他文档，请稍后重载",
+    501: `${kind} 转换组件不可用`
   };
-  const error = new Error(messages[status] || "本地预览组件无法转换此 DOC 文件");
+  const error = new Error(messages[status] || `本地预览组件无法转换此 ${kind} 文件`);
   error.status = status;
   return error;
 }
 
 async function prepareDocumentBuffer(buffer, ext, signal) {
-  if (ext !== "doc") return validateDocumentBuffer(buffer, ext);
-  if (!LOCAL_PREVIEW_CONFIG) throw new Error("预览 DOC 需要启用本地文档转换组件");
-  if (buffer.byteLength > 128 * 1024 * 1024) throw legacyWordError(413);
-  const response = await fetchLocalPreview("/legacy-word", signal, {
+  const presentation = isPresentation(ext);
+  if (ext !== "doc" && !presentation) return validateDocumentBuffer(buffer, ext);
+  if (!LOCAL_PREVIEW_CONFIG) throw new Error("请先启用本地文档转换组件");
+  if (buffer.byteLength > 128 * 1024 * 1024) throw conversionError(413, ext);
+  const endpoint = presentation ? "/presentation?" + new URLSearchParams({ format: ext }) : "/legacy-word";
+  const response = await fetchLocalPreview(endpoint, signal, {
     method: "POST",
     headers: { "Content-Type": "application/octet-stream" },
     body: buffer
   });
-  if (!response.ok) throw legacyWordError(response.status);
-  return validateDocumentBuffer(await response.arrayBuffer(), "docx");
+  if (!response.ok) throw conversionError(response.status, ext);
+  return validateDocumentBuffer(await response.arrayBuffer(), presentation ? "pdf" : "docx");
 }
 
 async function readLargeLocalDocument(fileUri, ext, signal) {
@@ -331,11 +352,11 @@ async function readLargeLocalDocument(fileUri, ext, signal) {
     throw error;
   }
   if (!response.ok) {
-    if (ext === "doc") throw legacyWordError(response.status);
+    if (ext === "doc" || isPresentation(ext)) throw conversionError(response.status, ext);
     throw new Error("本地预览组件无法读取此文件");
   }
   const contentType = response.headers.get("Content-Type");
-  const format = ext === "doc" ? (contentType === "application/pdf" ? "pdf" : "docx") : ext;
+  const format = isPresentation(ext) ? "pdf" : ext === "doc" ? (contentType === "application/pdf" ? "pdf" : "docx") : ext;
   return validateDocumentBuffer(await response.arrayBuffer(), format);
 }
 
@@ -370,7 +391,9 @@ function mountPreview(fallbackBox, hostSource) {
   ensureStylesInDoc(doc);
 
   const { fileName, fileUri, ext, downloadEl } = hostSource;
-  const isWord = ext !== "pdf";
+  const presentation = isPresentation(ext);
+  const isWord = ext === "doc" || ext === "docx";
+  const badgeType = presentation ? "ppt" : isWord ? "docx" : "pdf";
   logOnce(
     "detect:" + fileUri,
     "info",
@@ -385,8 +408,8 @@ function mountPreview(fallbackBox, hostSource) {
   const badge = createEl(
     doc,
     "span",
-    `bg-doc-preview-badge bg-doc-preview-badge--${isWord ? "docx" : "pdf"}`,
-    isWord ? "WORD" : "PDF"
+    `bg-doc-preview-badge bg-doc-preview-badge--${badgeType}`,
+    presentation ? "PPT" : isWord ? "WORD" : "PDF"
   );
   const nameEl = createEl(doc, "span", "bg-doc-preview-filename", fileName);
   nameEl.title = fileName;
@@ -750,7 +773,7 @@ function mountPreview(fallbackBox, hostSource) {
       const signal = AbortSignal.any([activeRead.signal, AbortSignal.timeout(120_000)]);
       try {
         metaEl.textContent = "解析中...";
-        if (ext === "doc" && file.size > 128 * 1024 * 1024) throw legacyWordError(413);
+        if ((ext === "doc" || presentation) && file.size > 128 * 1024 * 1024) throw conversionError(413, ext);
         const buffer = await prepareDocumentBuffer(await file.arrayBuffer(), ext, signal);
         if (generation === loadGeneration) await renderFromBuffer(buffer);
       } catch (err) {
@@ -926,14 +949,14 @@ function scan() {
     const source = candidates.get(box);
     if (!source || !hasSameDocument(entry.source, source) ||
         entry.root.parentElement !== box.parentElement || !entry.root.isConnected ||
-        (source.ext === "pdf" ? !settings.enablePdf : !settings.enableDocx)) {
+        !previewEnabled(source.ext)) {
       entry.dispose();
       mountedMap.delete(box);
     }
   }
   for (const [box, source] of candidates) {
     if (mountedMap.has(box) || !box.parentElement) continue;
-    if (source.ext === "pdf" ? !settings.enablePdf : !settings.enableDocx) continue;
+    if (!previewEnabled(source.ext)) continue;
     mountPreview(box, source);
   }
 }

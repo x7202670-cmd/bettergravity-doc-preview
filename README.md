@@ -1,6 +1,6 @@
 # BetterGravity Doc Preview (`doc-preview`)
 
-用于在 **Google Antigravity 2.x + BetterGravity** 工作区预览面板中直接显示 **Word（`.doc`、`.docx`）** 与 **PDF（`.pdf`）** 的本地离线插件。
+用于在 **Google Antigravity 2.x + BetterGravity** 工作区直接预览 Word（`.doc`、`.docx`）、PowerPoint（`.ppt`、`.pptx`）和 PDF 的本地离线插件。
 
 ## 目录结构
 
@@ -45,7 +45,7 @@ npm run check
 npm run install:plugin
 ```
 
-需要在工作区直接打开超过 20 MB 的本地 PDF 和 DOCX 时，可在安装时指定允许读取的目录。安装后重启 Antigravity。
+需要在工作区直接打开超过 20 MB 的本地文档，或启用 PowerPoint 原版预览时，可在安装时指定允许读取的目录。安装后重启 Antigravity。
 
 ```powershell
 .\scripts\install.ps1 -PreviewRoots 'D:\Projects'
@@ -62,5 +62,7 @@ npm run install:plugin
 重启本地预览组件或 Antigravity 后，Windows 上的已授权本地 `.doc` 优先用 Microsoft Word 在后台只读导出 PDF，按 Word 的分页显示。找不到 Word、文件带有下载标记或通过手动选取提供时，使用 DocVortex 兼容预览，排版可能有差异。预览按文件内容在内存中复用，原文件修改后会重新转换。单个 `.doc` 的转换上限为 128 MiB。
 
 含嵌入图片的已授权本地 `.docx` 也优先使用 Word 原版预览，以保留浮动图、印章和裁切效果。其他 `.docx` 继续使用内置预览。
+
+PowerPoint 文件在工作区内逐张显示，支持滚动、缩放和适应宽度。已授权目录里的文件优先由本机 Microsoft PowerPoint 只读导出，保留静态页面的版式、图片和图表。手动选取文件或原版导出不可用时，可通过上面配置的 Python 使用 DocVortex 兼容预览，版式可能有差异。转换上限为 128 MiB。预览仅显示静态幻灯片。
 
 详细技术架构与宿主对接规范请参阅 [docs/INTEGRATION.md](docs/INTEGRATION.md)。

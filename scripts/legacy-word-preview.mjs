@@ -6,25 +6,27 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-export const legacyWordLimit = 128 * 1024 * 1024;
+export const officePreviewLimit = 128 * 1024 * 1024;
 export const docxType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const nativeWorkerPath = fileURLToPath(new URL("./export-legacy-word.vbs", import.meta.url));
+const workerScripts = { Word: "./export-legacy-word.vbs", PowerPoint: "./export-powerpoint.vbs" };
 const converterPath = fileURLToPath(new URL("./convert-legacy-word.py", import.meta.url));
 const oleSignature = Buffer.from("d0cf11e0a1b11ae1", "hex");
+const zipSignature = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const cacheLimit = 48 * 1024 * 1024;
 
-let worker;
-let workerRetryAfter = 0;
-let nativeQueue = Promise.resolve();
+const workers = new Map();
+const retryAfter = new Map();
+const nativeQueues = new Map();
 const cache = new Map();
 const pending = new Map();
 let cacheBytes = 0;
 
-function getWorker() {
-  if (worker) return worker;
-  if (Date.now() < workerRetryAfter) throw new Error("Word automation unavailable");
+function getWorker(application) {
+  if (workers.has(application)) return workers.get(application);
+  if (Date.now() < retryAfter.get(application)) throw new Error(application + " automation unavailable");
 
   const launcher = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "cscript.exe");
+  const nativeWorkerPath = fileURLToPath(new URL(workerScripts[application], import.meta.url));
   const child = spawn(launcher, ["//NoLogo", "//B", "//U", nativeWorkerPath], {
     windowsHide: true,
     stdio: ["pipe", "pipe", "ignore"]
@@ -34,8 +36,8 @@ function getWorker() {
   let idle;
 
   function stop(error) {
-    if (worker !== instance) return;
-    worker = undefined;
+    if (workers.get(application) !== instance) return;
+    workers.delete(application);
     clearTimeout(idle);
     reply?.reject(error);
     child.stdin.end();
@@ -46,7 +48,7 @@ function getWorker() {
 
   function waitForReply(timeout) {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => stop(new Error("Word export timed out")), timeout);
+      const timer = setTimeout(() => stop(new Error(application + " export timed out")), timeout);
       reply = {
         resolve(value) { clearTimeout(timer); reply = undefined; resolve(value); },
         reject(error) { clearTimeout(timer); reply = undefined; reject(error); }
@@ -55,16 +57,16 @@ function getWorker() {
   }
 
   function armIdleTimer() {
-    idle = setTimeout(() => stop(new Error("Word export worker idle")), 15 * 60_000);
+    idle = setTimeout(() => stop(new Error(application + " export worker idle")), 15 * 60_000);
     idle.unref();
   }
 
   const instance = {
     ready: waitForReply(15_000).then((message) => {
-      if (message !== "ready") throw new Error("Unexpected Word worker response");
+      if (message !== "ready") throw new Error("Unexpected " + application + " worker response");
       armIdleTimer();
     }).catch((error) => {
-      workerRetryAfter = Date.now() + 60_000;
+      retryAfter.set(application, Date.now() + 60_000);
       stop(error);
       throw error;
     }),
@@ -75,7 +77,7 @@ function getWorker() {
       child.stdin.write(Buffer.from(`${sourcePath}\r\n${outputPath}\r\n`, "utf16le"));
       if (await result !== "ok") {
         armIdleTimer();
-        throw new Error("Word could not export this document");
+        throw new Error(application + " could not export this document");
       }
       armIdleTimer();
     }
@@ -83,17 +85,17 @@ function getWorker() {
 
   lines.on("line", (line) => reply?.resolve(line.replace(/^\uFEFF/, "")));
   child.on("error", stop);
-  child.on("exit", () => stop(new Error("Word export worker exited")));
+  child.on("exit", () => stop(new Error(application + " export worker exited")));
   child.stdin.on("error", stop);
-  worker = instance;
+  workers.set(application, instance);
   return instance;
 }
 
 export function warmLegacyWordPreview() {
-  if (process.platform === "win32") void getWorker().ready.catch(() => {});
+  if (process.platform === "win32") void getWorker("Word").ready.catch(() => {});
 }
 
-export async function canUseNativeWord(filePath) {
+export async function canUseNativeOffice(filePath) {
   if (process.platform !== "win32") return false;
   try {
     const marker = await open(filePath + ":Zone.Identifier", "r");
@@ -104,34 +106,35 @@ export async function canUseNativeWord(filePath) {
   return false;
 }
 
-function exportNativePdf(source, extension) {
-  const job = nativeQueue.then(async () => {
-    const renderer = getWorker();
+function exportNativePdf(source, extension, application) {
+  const previous = nativeQueues.get(application) ?? Promise.resolve();
+  const job = previous.then(async () => {
+    const renderer = getWorker(application);
     await renderer.ready;
-    const directory = await mkdtemp(path.join(tmpdir(), "bg-word-preview-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "bg-office-preview-"));
     try {
       const input = path.join(directory, "document" + extension);
       const output = path.join(directory, "preview.pdf");
       await writeFile(input, source);
       await renderer.export(input, output);
       const preview = await readFile(output);
-      if (preview.length > legacyWordLimit || preview.subarray(0, 5).toString() !== "%PDF-") {
-        throw new Error("Invalid Word PDF output");
+      if (preview.length > officePreviewLimit || preview.subarray(0, 5).toString() !== "%PDF-") {
+        throw new Error("Invalid Office PDF output");
       }
       return preview;
     } finally {
       await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }).catch(() => {});
     }
   });
-  nativeQueue = job.catch(() => {});
+  nativeQueues.set(application, job.catch(() => {}));
   return job;
 }
 
-function convertToDocx(source, python) {
+function convertWithDocVortex(source, python, args = []) {
   return new Promise((resolve, reject) => {
-    const child = execFile(python, ["-I", converterPath], {
+    const child = execFile(python, ["-I", converterPath, ...args], {
       encoding: "buffer",
-      maxBuffer: legacyWordLimit,
+      maxBuffer: officePreviewLimit,
       timeout: 45_000,
       windowsHide: true
     }, (error, stdout) => error ? reject(error) : resolve(stdout));
@@ -170,13 +173,13 @@ function renderWithCache(key, render) {
 }
 
 export function renderWordWithOriginalLayout(source, extension) {
-  const signature = extension === ".docx" ? Buffer.from([0x50, 0x4b, 0x03, 0x04]) : oleSignature;
+  const signature = extension === ".docx" ? zipSignature : oleSignature;
   if (!source.subarray(0, signature.length).equals(signature)) {
     throw Object.assign(new Error("Invalid Word document"), { status: 422 });
   }
   const digest = createHash("sha256").update(source).digest("hex");
   return renderWithCache("pdf:" + extension + ":" + digest, async () => ({
-    type: "application/pdf", bytes: await exportNativePdf(source, extension)
+    type: "application/pdf", bytes: await exportNativePdf(source, extension, "Word")
   }));
 }
 
@@ -189,5 +192,26 @@ export async function convertLegacyWord(source, python, native) {
     }
   }
   const digest = createHash("sha256").update(source).digest("hex");
-  return renderWithCache("docx:" + digest, async () => ({ type: docxType, bytes: await convertToDocx(source, python) }));
+  return renderWithCache("docx:" + digest, async () => ({ type: docxType, bytes: await convertWithDocVortex(source, python) }));
+}
+
+export async function renderPresentation(source, extension, python, native) {
+  const signature = extension === ".pptx" ? zipSignature : oleSignature;
+  if (!source.subarray(0, signature.length).equals(signature)) {
+    throw Object.assign(new Error("Invalid presentation"), { status: 422 });
+  }
+  const key = extension + ":" + createHash("sha256").update(source).digest("hex");
+  if (native) {
+    try {
+      return await renderWithCache("powerpoint:" + key, async () => ({
+        type: "application/pdf", bytes: await exportNativePdf(source, extension, "PowerPoint")
+      }));
+    } catch {
+      // The offline decoder remains available when PowerPoint cannot export the file.
+    }
+  }
+  if (!python) throw Object.assign(new Error("Presentation converter unavailable"), { status: 501 });
+  return renderWithCache("slide-pdf:" + key, async () => ({
+    type: "application/pdf", bytes: await convertWithDocVortex(source, python, [extension.slice(1)])
+  }));
 }
