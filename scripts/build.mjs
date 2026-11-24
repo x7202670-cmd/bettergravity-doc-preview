@@ -13,7 +13,7 @@ const pdfSrc = fs.readFileSync(path.join(nm, "pdfjs-dist/build/pdf.min.js"), "ut
 const pdfWorkerSrc = fs.readFileSync(path.join(nm, "pdfjs-dist/build/pdf.worker.min.js"), "utf8");
 const coreSrc = fs.readFileSync(path.join(rootDir, "src/plugin-core.js"), "utf8");
 
-const bundle = `// BetterGravity Doc Preview Plugin (bundled offline)
+const bundle = `// BetterGravity Office & PDF Preview Plugin (bundled offline)
 // Includes JSZip, docx-preview (Apache-2.0), and PDF.js 3.11.174 (Apache-2.0)
 
 (function () {

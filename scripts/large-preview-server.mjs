@@ -209,6 +209,6 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  console.log("Doc Preview 已启动。");
+  console.log("Office & PDF Preview 已启动。");
   if (legacyWordPython) warmLegacyWordPreview();
 });

@@ -1,5 +1,5 @@
 {
-  "name": "bettergravity-doc-preview",
+  "name": "bettergravity-office-pdf-preview",
   "version": "1.0.0",
   "description": "在 Antigravity 工作区预览 Word、PowerPoint 和 PDF，支持自适应宽度与鼠标定点缩放。",
   "type": "module",

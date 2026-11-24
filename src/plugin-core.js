@@ -1,4 +1,4 @@
-/* BetterGravity Doc Preview — Core Plugin Logic v1.1 */
+/* BetterGravity Office & PDF Preview — Core Plugin Logic v1.1 */
 
 const ROOT_CLASS = "bg-doc-preview-root";
 const HIDDEN_CLASS = "bg-doc-preview-hidden-fallback";

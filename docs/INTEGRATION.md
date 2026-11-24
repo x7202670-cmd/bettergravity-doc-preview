@@ -1,4 +1,4 @@
-# BetterGravity Doc Preview 对接文档
+# BetterGravity Office & PDF Preview 对接文档
 
 本文档记录 `doc-preview` 插件与 **Antigravity 2.32.x（Electron 44）+ BetterGravity 3.x** 宿主的对接协议、DOM 接管机制、数据源抓取方式、离线打包方案与调试排查指南，便于后续维护、二次开发或移植。
 
@@ -16,8 +16,8 @@ BetterGravity 从以下全局目录加载本地插件：
 ### 1.2 `plugin.json` 清单规范
 ```json
 {
-  "name": "Doc Preview",
-  "description": "在工作区预览面板中直接渲染 Word (.docx) 和 PDF (.pdf) 文档，替代无法预览提示与卡死的加载状态。",
+  "name": "Office & PDF Preview",
+  "description": "在工作区预览面板中直接显示 Word、PowerPoint 和 PDF 文档。",
   "version": "1.0.0",
   "author": "BetterGravity Community",
   "main": "index.js",

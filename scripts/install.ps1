@@ -53,9 +53,9 @@ if ($enabled -notcontains "doc-preview") {
 }
 
 if ($settings.plugins.developerMode -eq $true) {
-  Write-Host "已安装并登记 Doc Preview，BetterGravity 会自动热重载。"
+  Write-Host "已安装并登记 Office & PDF Preview，BetterGravity 会自动热重载。"
 } else {
-  Write-Warning "已复制并登记插件文件。要启用 Doc Preview，请在 BetterGravity 设置里开启开发者模式。"
+  Write-Warning "已复制并登记插件文件。要启用 Office & PDF Preview，请在 BetterGravity 设置里开启开发者模式。"
 }
 if ($PreviewRoots.Count -gt 0 -or $LegacyWordPython) {
   Write-Host "重启本地预览组件或 Antigravity 以加载预览配置。"

@@ -1,11 +1,11 @@
-# BetterGravity Doc Preview (`doc-preview`)
+# BetterGravity Office & PDF Preview
 
 用于在 **Google Antigravity 2.x + BetterGravity** 工作区直接预览 Word（`.doc`、`.docx`）、PowerPoint（`.ppt`、`.pptx`）和 PDF 的本地离线插件。
 
 ## 目录结构
 
 ```text
-bettergravity-doc-preview/
+bettergravity-office-pdf-preview/
 ├── plugin.json              # BetterGravity 插件清单
 ├── package.json             # 工程脚本与依赖声明
 ├── README.md                # 工程使用说明

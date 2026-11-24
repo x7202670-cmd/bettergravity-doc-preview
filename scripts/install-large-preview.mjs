@@ -12,6 +12,8 @@ const sidecarId = "doc-preview-local";
 const configDir = path.join(os.homedir(), ".gemini", "config");
 const sidecarDir = path.join(configDir, "sidecars", sidecarId);
 const previewConfigPath = path.join(sidecarDir, "preview-config.json");
+const sidecarManifestPath = path.join(sidecarDir, "sidecar.json");
+const sidecarDisplayName = "Office & PDF Preview 大文件预览";
 const marker = "const LOCAL_PREVIEW_CONFIG = null;";
 const bundle = fs.readFileSync(new URL("../dist/index.js", import.meta.url), "utf8");
 
@@ -50,7 +52,7 @@ function readPreviewConfig() {
   return config;
 }
 
-if (!pluginDir || !bundle.includes(marker)) throw new Error("未找到 Doc Preview 构建产物。");
+if (!pluginDir || !bundle.includes(marker)) throw new Error("未找到 Office & PDF Preview 构建产物。");
 let config = readPreviewConfig();
 
 if (requestedRoots.length || configureLegacyWord) {
@@ -86,8 +88,8 @@ if (requestedRoots.length || configureLegacyWord) {
   };
   fs.mkdirSync(sidecarDir, { recursive: true });
   writeJson(previewConfigPath, config);
-  writeJson(path.join(sidecarDir, "sidecar.json"), {
-    display_name: "Doc Preview 大文件预览",
+  writeJson(sidecarManifestPath, {
+    display_name: sidecarDisplayName,
     command: process.execPath,
     args: [path.join(sidecarDir, "large-preview-server.mjs")],
     restart_policy: "on-failure"
@@ -96,6 +98,12 @@ if (requestedRoots.length || configureLegacyWord) {
 }
 
 if (config) {
+  if (fs.existsSync(sidecarManifestPath)) {
+    const manifest = JSON.parse(fs.readFileSync(sidecarManifestPath, "utf8"));
+    if (manifest.display_name !== sidecarDisplayName) {
+      writeJson(sidecarManifestPath, { ...manifest, display_name: sidecarDisplayName });
+    }
+  }
   for (const name of ["convert-legacy-word.py", "export-legacy-word.vbs", "export-powerpoint.vbs", "legacy-word-preview.mjs", "large-preview-server.mjs"]) {
     writeAtomic(path.join(sidecarDir, name), fs.readFileSync(new URL("./" + name, import.meta.url)));
   }
