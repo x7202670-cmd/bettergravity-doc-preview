@@ -9,7 +9,16 @@ import { canUseNativeOffice, convertLegacyWord, docxType, officePreviewLimit, re
 const { port, token, roots, legacyWordPython } = JSON.parse(
   await readFile(new URL("./preview-config.json", import.meta.url), "utf8")
 );
-const allowedRoots = await Promise.all(roots.map((root) => realpath(root)));
+const allowedRoots = (await Promise.all(roots.map(async (root) => {
+  try {
+    const resolved = await realpath(root);
+    if (!(await stat(resolved)).isDirectory()) throw new Error("Not a directory");
+    return resolved;
+  } catch (error) {
+    console.warn("Skipping unavailable preview directory: " + root + " (" + (error.code || error.message) + ")");
+    return null;
+  }
+}))).filter(Boolean);
 const authority = "127.0.0.1:" + port;
 const expectedAuthorization = Buffer.from("Bearer " + token);
 let activeConversions = 0;

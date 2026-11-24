@@ -514,6 +514,13 @@ function mountPreview(fallbackBox, hostSource) {
     pdfStage = null;
   };
 
+  const resetPreview = () => {
+    renderGeneration++;
+    cleanupPdf();
+    currentBuffer = null;
+    docxStage = null;
+  };
+
   const renderDocx = async (buf) => {
     cleanupPdf();
     viewport.innerHTML = "";
@@ -756,9 +763,7 @@ function mountPreview(fallbackBox, hostSource) {
 
   const showFallbackPicker = (reason) => {
     if (rootDisposed) return;
-    renderGeneration++;
-    cleanupPdf();
-    currentBuffer = null;
+    resetPreview();
     metaEl.textContent = "需要选择文件";
     viewport.innerHTML = "";
 
@@ -784,6 +789,7 @@ function mountPreview(fallbackBox, hostSource) {
     const renderSelectedFile = async (file) => {
       if (!file) return;
       const generation = ++loadGeneration;
+      resetPreview();
       activeRead?.abort();
       activeRead = new AbortController();
       const signal = AbortSignal.any([activeRead.signal, AbortSignal.timeout(120_000)]);
@@ -831,16 +837,17 @@ function mountPreview(fallbackBox, hostSource) {
   };
 
   const loadAndRender = async (preferLocal = false, generation = ++loadGeneration, retryCount = 0) => {
+    activeRead?.abort();
     const largeFile = Boolean(hostSource.message);
     if (largeFile && (!LOCAL_PREVIEW_CONFIG || !/^file:\/\/\//i.test(fileUri))) {
       showFallbackPicker(hostSource.message);
       return;
     }
+    resetPreview();
     metaEl.textContent = "加载中...";
     const loading = createEl(doc, "div", "bg-doc-preview-state");
     loading.append(createEl(doc, "div", "bg-doc-preview-state-title", `正在解析 ${fileName} ...`));
     viewport.replaceChildren(loading);
-    activeRead?.abort();
     activeRead = new AbortController();
     const signal = AbortSignal.any([activeRead.signal, AbortSignal.timeout(120_000)]);
     try {
@@ -939,14 +946,13 @@ function mountPreview(fallbackBox, hostSource) {
   const dispose = () => {
     rootDisposed = true;
     activeRead?.abort();
-    renderGeneration++;
+    resetPreview();
     resizeObserver?.disconnect();
     if (resizeTimer) {
       clearTimeout(resizeTimer);
       resizeTimer = null;
     }
     root.removeEventListener("wheel", onWheel, { capture: true });
-    cleanupPdf();
     if (root.isConnected) root.remove();
     fallbackBox.classList.remove(HIDDEN_CLASS);
     activeRoots.delete(dispose);

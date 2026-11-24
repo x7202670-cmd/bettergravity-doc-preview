@@ -1,6 +1,7 @@
 """Repair incomplete embedded CJK fonts in an in-memory preview copy."""
 
 from collections import defaultdict
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 import os
@@ -16,6 +17,9 @@ W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 FONT_TABLE = "word/fontTable.xml"
 FONT_RELS = "word/_rels/fontTable.xml.rels"
+STYLES = "word/styles.xml"
+RUN_FONTS = W + "rPr/" + W + "rFonts"
+CJK_FONT_SLOTS = ("eastAsia", "ascii")
 FALLBACKS = {
     "仿宋_GB2312": ("FangSong", "仿宋"),
     "楷体_GB2312": ("KaiTi", "楷体"),
@@ -31,6 +35,72 @@ def read_xml(archive, name):
 
 def cjk_characters(text):
     return {ord(ch) for ch in text if "\u3400" <= ch <= "\u9fff" or "\U00020000" <= ch <= "\U000323af"}
+
+
+def font_slots(fonts):
+    if fonts is None:
+        return {}
+    slots = {}
+    for slot in CJK_FONT_SLOTS:
+        if fonts.get(W + slot + "Theme"):
+            # A theme value overrides a named font in the same slot.
+            slots[slot] = None
+        elif family := fonts.get(W + slot):
+            slots[slot] = family
+    return slots
+
+
+def collect_font_usage(parts, embedded):
+    styles = parts.get(STYLES)
+    style_index = {}
+    default_paragraph_style = None
+    document_fonts = {}
+    if styles is not None:
+        document_fonts = font_slots(styles.find(W + "docDefaults/" + W + "rPrDefault/" + RUN_FONTS))
+        for style in styles.findall(W + "style"):
+            style_type = style.get(W + "type")
+            style_id = style.get(W + "styleId")
+            if style_id:
+                style_index[style_type, style_id] = style
+                if style_type == "paragraph" and style.get(W + "default") in ("1", "true", "on"):
+                    default_paragraph_style = style_id
+
+    @lru_cache(maxsize=256)
+    def style_fonts(style_type, style_id):
+        slots = {}
+        visited = set()
+        while style_id and style_id not in visited and len(slots) < len(CJK_FONT_SLOTS):
+            style = style_index.get((style_type, style_id))
+            if style is None:
+                break
+            visited.add(style_id)
+            for slot, family in font_slots(style.find(RUN_FONTS)).items():
+                slots.setdefault(slot, family)
+            parent = style.find(W + "basedOn")
+            style_id = parent.get(W + "val") if parent is not None else None
+        return slots
+
+    usage = defaultdict(set)
+    for name, part in parts.items():
+        if name in (STYLES, FONT_TABLE):
+            continue
+        for run in part.iter(W + "r"):
+            required = cjk_characters("".join(t.text or "" for t in run.findall(W + "t")))
+            if not required:
+                continue
+            paragraph = next(run.iterancestors(W + "p"), None)
+            paragraph_style = paragraph.find(W + "pPr/" + W + "pStyle") if paragraph is not None else None
+            paragraph_id = paragraph_style.get(W + "val") if paragraph_style is not None else None
+            if ("paragraph", paragraph_id) not in style_index:
+                paragraph_id = default_paragraph_style
+            character_style = run.find(W + "rPr/" + W + "rStyle")
+            character_id = character_style.get(W + "val") if character_style is not None else None
+            slots = (document_fonts | style_fonts("paragraph", paragraph_id)
+                     | style_fonts("character", character_id) | font_slots(run.find(RUN_FONTS)))
+            family = slots.get("eastAsia", slots.get("ascii"))
+            if family in embedded:
+                usage[family].update(required)
+    return usage
 
 
 def installed_fonts():
@@ -99,18 +169,10 @@ def normalize(source):
             return source
 
         parts = {FONT_TABLE: table}
-        usage = defaultdict(set)
         for name in archive.namelist():
-            if not re.fullmatch(r"word/(?:document|header\d+|footer\d+|footnotes|endnotes|comments|styles)\.xml", name):
-                continue
-            root = parts[name] = read_xml(archive, name)
-            for run in root.iter(W + "r"):
-                fonts = run.find(W + "rPr/" + W + "rFonts")
-                if fonts is None:
-                    continue
-                family = fonts.get(W + "eastAsia") or fonts.get(W + "ascii")
-                if family in embedded:
-                    usage[family].update(cjk_characters("".join(t.text or "" for t in run.iter(W + "t"))))
+            if re.fullmatch(r"word/(?:document|header\d+|footer\d+|footnotes|endnotes|comments|styles)\.xml", name):
+                parts[name] = read_xml(archive, name)
+        usage = collect_font_usage(parts, embedded)
 
         relationships = {rel.get("Id"): rel.get("Target") for rel in read_xml(archive, FONT_RELS)
                          if rel.get("TargetMode") != "External"}
