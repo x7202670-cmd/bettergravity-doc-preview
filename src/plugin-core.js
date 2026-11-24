@@ -360,18 +360,34 @@ async function readLargeLocalDocument(fileUri, ext, signal) {
   return validateDocumentBuffer(await response.arrayBuffer(), format);
 }
 
-async function preferOriginalDocxLayout(buffer, fileUri, signal) {
-  if (!LOCAL_PREVIEW_CONFIG || !/^file:\/\//i.test(fileUri)) return buffer;
+async function prepareDocxPreview(buffer, fileUri, signal) {
+  if (!LOCAL_PREVIEW_CONFIG) return buffer;
+  let hasEmbeddedFonts = false;
   try {
     const archive = await JSZip.loadAsync(buffer);
-    if (!archive.file(/^word\/media\/.+/i).length) return buffer;
-    const params = new URLSearchParams({ uri: fileUri, layout: "word" });
-    const response = await fetchLocalPreview("/document?" + params, signal);
-    if (response.ok && response.headers.get("Content-Type") === "application/pdf") {
-      return validateDocumentBuffer(await response.arrayBuffer(), "pdf");
+    hasEmbeddedFonts = archive.file(/^word\/fonts\/.+/i).length > 0;
+    const hasMedia = archive.file(/^word\/media\/.+/i).length > 0;
+    if ((hasEmbeddedFonts || hasMedia) && /^file:\/\//i.test(fileUri || "")) {
+      const params = new URLSearchParams({ uri: fileUri, layout: "word" });
+      const response = await fetchLocalPreview("/document?" + params, signal);
+      if (response.ok && response.headers.get("Content-Type") === "application/pdf") {
+        return validateDocumentBuffer(await response.arrayBuffer(), "pdf");
+      }
     }
   } catch (error) {
     if (signal.aborted) throw error;
+  }
+  if (hasEmbeddedFonts) {
+    try {
+      const response = await fetchLocalPreview("/word-fonts", signal, {
+        method: "POST",
+        headers: { "Content-Type": "application/octet-stream" },
+        body: buffer
+      });
+      if (response.ok) return validateDocumentBuffer(await response.arrayBuffer(), "docx");
+    } catch (error) {
+      if (signal.aborted) throw error;
+    }
   }
   return buffer;
 }
@@ -774,7 +790,8 @@ function mountPreview(fallbackBox, hostSource) {
       try {
         metaEl.textContent = "解析中...";
         if ((ext === "doc" || presentation) && file.size > 128 * 1024 * 1024) throw conversionError(413, ext);
-        const buffer = await prepareDocumentBuffer(await file.arrayBuffer(), ext, signal);
+        let buffer = await prepareDocumentBuffer(await file.arrayBuffer(), ext, signal);
+        if (ext === "docx") buffer = await prepareDocxPreview(buffer, null, signal);
         if (generation === loadGeneration) await renderFromBuffer(buffer);
       } catch (err) {
         if (generation === loadGeneration) showFallbackPicker(err?.message || String(err));
@@ -829,7 +846,7 @@ function mountPreview(fallbackBox, hostSource) {
     try {
       let buf = await resolveDocumentBuffer(fallbackBox, hostSource, signal, preferLocal);
       if (rootDisposed || generation !== loadGeneration) return;
-      if (ext === "docx") buf = await preferOriginalDocxLayout(buf, fileUri, signal);
+      if (ext === "docx") buf = await prepareDocxPreview(buf, fileUri, signal);
       if (rootDisposed || generation !== loadGeneration) return;
       await renderFromBuffer(buf);
       if (rootDisposed || generation !== loadGeneration) return;

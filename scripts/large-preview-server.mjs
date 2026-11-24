@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import { canUseNativeOffice, convertLegacyWord, docxType, officePreviewLimit, renderPresentation, renderWordWithOriginalLayout, warmLegacyWordPreview } from "./legacy-word-preview.mjs";
+import { canUseNativeOffice, convertLegacyWord, docxType, officePreviewLimit, repairDocxPreview, renderPresentation, renderWordWithOriginalLayout, warmLegacyWordPreview } from "./legacy-word-preview.mjs";
 
 const { port, token, roots, legacyWordPython } = JSON.parse(
   await readFile(new URL("./preview-config.json", import.meta.url), "utf8")
@@ -89,7 +89,8 @@ const server = createServer(async (request, response) => {
   }
   const url = new URL("http://" + authority + request.url);
   const presentationUpload = url.pathname === "/presentation";
-  const upload = url.pathname === "/legacy-word" || presentationUpload;
+  const fontRepairUpload = url.pathname === "/word-fonts";
+  const upload = url.pathname === "/legacy-word" || presentationUpload || fontRepairUpload;
   if (!upload && url.pathname !== "/document") {
     response.writeHead(404).end();
     return;
@@ -131,7 +132,8 @@ const server = createServer(async (request, response) => {
       return;
     }
     await sendConvertedPreview(response, () => readDocumentBytes(request.iterator({ destroyOnReturn: false })),
-      presentationUpload ? (source) => renderPresentation(source, format, legacyWordPython, false)
+      fontRepairUpload ? (source) => repairDocxPreview(source, legacyWordPython)
+        : presentationUpload ? (source) => renderPresentation(source, format, legacyWordPython, false)
         : (source) => convertLegacyWord(source, legacyWordPython, false));
     return;
   }
@@ -192,7 +194,7 @@ const server = createServer(async (request, response) => {
             (source) => renderPresentation(source, extension, legacyWordPython, useNative));
         } else {
           await sendConvertedPreview(response, readSource,
-            originalDocxLayout ? (source) => renderWordWithOriginalLayout(source, ".docx")
+            originalDocxLayout ? (source) => renderWordWithOriginalLayout(source, ".docx", legacyWordPython)
               : (source) => convertLegacyWord(source, legacyWordPython, useNative));
         }
         return;

@@ -104,7 +104,7 @@ if (config) {
       writeJson(sidecarManifestPath, { ...manifest, display_name: sidecarDisplayName });
     }
   }
-  for (const name of ["convert-legacy-word.py", "export-legacy-word.vbs", "export-powerpoint.vbs", "legacy-word-preview.mjs", "large-preview-server.mjs"]) {
+  for (const name of ["convert-legacy-word.py", "normalize-docx-fonts.py", "export-legacy-word.vbs", "export-powerpoint.vbs", "legacy-word-preview.mjs", "large-preview-server.mjs"]) {
     writeAtomic(path.join(sidecarDir, name), fs.readFileSync(new URL("./" + name, import.meta.url)));
   }
 }

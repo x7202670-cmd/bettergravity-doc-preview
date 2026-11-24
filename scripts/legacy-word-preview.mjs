@@ -10,6 +10,7 @@ export const officePreviewLimit = 128 * 1024 * 1024;
 export const docxType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const workerScripts = { Word: "./export-legacy-word.vbs", PowerPoint: "./export-powerpoint.vbs" };
 const converterPath = fileURLToPath(new URL("./convert-legacy-word.py", import.meta.url));
+const fontRepairPath = fileURLToPath(new URL("./normalize-docx-fonts.py", import.meta.url));
 const oleSignature = Buffer.from("d0cf11e0a1b11ae1", "hex");
 const zipSignature = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const cacheLimit = 48 * 1024 * 1024;
@@ -130,17 +131,28 @@ function exportNativePdf(source, extension, application) {
   return job;
 }
 
-function convertWithDocVortex(source, python, args = []) {
+function runPythonConverter(source, python, script, args = [], timeout = 45_000) {
   return new Promise((resolve, reject) => {
-    const child = execFile(python, ["-I", converterPath, ...args], {
+    const child = execFile(python, ["-I", script, ...args], {
       encoding: "buffer",
       maxBuffer: officePreviewLimit,
-      timeout: 45_000,
+      timeout,
       windowsHide: true
     }, (error, stdout) => error ? reject(error) : resolve(stdout));
     child.stdin.on("error", () => {}); // The decoder may exit before receiving the full input.
     child.stdin.end(source);
   });
+}
+
+async function normalizeDocxFonts(source, python) {
+  if (!python) return source;
+  try {
+    const repaired = await runPythonConverter(source, python, fontRepairPath, [], 15_000);
+    if (repaired.subarray(0, zipSignature.length).equals(zipSignature)) return repaired;
+  } catch {
+    // Font repair is optional; an unavailable font helper must not prevent preview.
+  }
+  return source;
 }
 
 function remember(key, result) {
@@ -172,14 +184,25 @@ function renderWithCache(key, render) {
   return job;
 }
 
-export function renderWordWithOriginalLayout(source, extension) {
+export function renderWordWithOriginalLayout(source, extension, python) {
   const signature = extension === ".docx" ? zipSignature : oleSignature;
   if (!source.subarray(0, signature.length).equals(signature)) {
     throw Object.assign(new Error("Invalid Word document"), { status: 422 });
   }
   const digest = createHash("sha256").update(source).digest("hex");
-  return renderWithCache("pdf:" + extension + ":" + digest, async () => ({
-    type: "application/pdf", bytes: await exportNativePdf(source, extension, "Word")
+  return renderWithCache("pdf:" + extension + ":" + digest, async () => {
+    const previewSource = extension === ".docx" ? await normalizeDocxFonts(source, python) : source;
+    return { type: "application/pdf", bytes: await exportNativePdf(previewSource, extension, "Word") };
+  });
+}
+
+export async function repairDocxPreview(source, python) {
+  if (!source.subarray(0, zipSignature.length).equals(zipSignature)) {
+    throw Object.assign(new Error("Invalid DOCX document"), { status: 422 });
+  }
+  const digest = createHash("sha256").update(source).digest("hex");
+  return renderWithCache("font-repair:" + digest, async () => ({
+    type: docxType, bytes: await normalizeDocxFonts(source, python)
   }));
 }
 
@@ -192,7 +215,7 @@ export async function convertLegacyWord(source, python, native) {
     }
   }
   const digest = createHash("sha256").update(source).digest("hex");
-  return renderWithCache("docx:" + digest, async () => ({ type: docxType, bytes: await convertWithDocVortex(source, python) }));
+  return renderWithCache("docx:" + digest, async () => ({ type: docxType, bytes: await runPythonConverter(source, python, converterPath) }));
 }
 
 export async function renderPresentation(source, extension, python, native) {
@@ -212,6 +235,6 @@ export async function renderPresentation(source, extension, python, native) {
   }
   if (!python) throw Object.assign(new Error("Presentation converter unavailable"), { status: 501 });
   return renderWithCache("slide-pdf:" + key, async () => ({
-    type: "application/pdf", bytes: await convertWithDocVortex(source, python, [extension.slice(1)])
+    type: "application/pdf", bytes: await runPythonConverter(source, python, converterPath, [extension.slice(1)])
   }));
 }
